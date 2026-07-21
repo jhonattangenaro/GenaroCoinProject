@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Escáner Institucional SFP</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="/static/lightweight-charts.js"></script>
+  <style>
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: #131722; }
+    ::-webkit-scrollbar-thumb { background: #2a2e39; border-radius: 2px; }
+    #precio-tiempo-real { font-size: 1.2rem; font-weight: bold; background: #1e222d; padding: 4px 12px; border-radius: 4px; border: 1px solid #2a2e39; font-family: monospace; display: inline-block; min-width: 100px; text-align: right; color: #d1d4dc; transition: color 0.1s ease-in-out; }
+    .precio-up { color: #26a69a !important; }
+    .precio-down { color: #ef5350 !important; }
+    select option { background: #1e222d; color: white; }
+  </style>
+</head>
+<body class="bg-[#131722] text-white font-sans h-screen flex flex-col overflow-hidden">
+  <header class="h-14 border-b border-gray-800 bg-[#1e222d] px-4 flex items-center justify-between shrink-0 z-50">
+    <div class="flex items-center space-x-6">
+      <h1 class="text-blue-400 font-bold tracking-wider text-sm md:text-base uppercase flex items-center">
+        <a href="/" class="mr-3 bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded text-white text-xs">← MENÚ</a>
+        <span class="inline-block w-2 h-2 rounded-full bg-blue-500 animate-pulse mr-2"></span> Escáner SFP
+      </h1>
+      <div class="flex items-center space-x-3 text-xs">
+        <div>
+          <label class="text-gray-400 block text-[10px] uppercase font-bold">Moneda</label>
+          <select id="selector-moneda" class="bg-[#131722] border border-gray-700 rounded px-2 py-1 text-white font-mono focus:outline-none focus:border-blue-500" onchange="cambiarPar(this.value)">
+            <option value="BTCUSDT">Cargando...</option>
+          </select>
+        </div>
+        <div class="relative">
+          <label class="text-gray-400 block text-[10px] uppercase font-bold">Buscar Par</label>
+          <input type="text" id="buscador-par" autocomplete="off" placeholder="Ej: PEPE, DOGE..." class="bg-[#131722] border border-gray-700 rounded px-2 py-1 text-white font-mono w-32 focus:outline-none focus:border-blue-500" oninput="filtrarSimbolos(this.value)" onfocus="filtrarSimbolos(this.value)">
+          <div id="resultados-busqueda" class="hidden absolute left-0 mt-1 w-48 max-h-64 overflow-y-auto bg-[#1e222d] border border-gray-700 rounded shadow-lg z-50"></div>
+        </div>
+        <div>
+          <label class="text-gray-400 block text-[10px] uppercase font-bold">Temporalidad</label>
+          <select id="selector-temporalidad" class="bg-[#131722] border border-gray-700 rounded px-2 py-1 text-white focus:outline-none focus:border-blue-500" onchange="cambiarTemporalidad(this.value)">
+            <option value="1m" selected>1 Minuto</option>
+            <option value="3m">3 Minutos</option>
+            <option value="5m">5 Minutos</option>
+            <option value="15m">15 Minutos</option>
+            <option value="30m">30 Minutos</option>
+            <option value="1h">1 Hora</option>
+            <option value="2h">2 Horas</option>
+            <option value="4h">4 Horas</option>
+            <option value="1d">1 Día</option>
+            <option value="1w">1 Semana</option>
+            <option value="1M">1 Mes</option>
+          </select>
+        </div>
+        <div>
+          <label class="text-gray-400 block text-[10px] uppercase font-bold">Zonas</label>
+          <select id="selector-zonas" class="bg-[#131722] border border-gray-700 rounded px-2 py-1 text-white focus:outline-none focus:border-blue-500" onchange="cambiarZonas(parseInt(this.value))">
+            <option value="0">Todas</option>
+            <option value="1">1</option>
+            <option value="2" selected>2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+          </select>
+        </div>
+        <div>
+          <label class="text-gray-400 block text-[10px] uppercase font-bold">Precio</label>
+          <span id="precio-tiempo-real">---</span>
+        </div>
+      </div>
+    </div>
+    
+    <div class="hidden xl:flex items-center space-x-4 bg-[#131722] border border-gray-800 px-3 py-1.5 rounded text-[11px]">
+      <div class="flex flex-col">
+        <span class="text-gray-400 font-bold uppercase tracking-wider text-[9px]">🌡️ Termómetro de Sesión</span>
+        <div class="flex items-center space-x-2 mt-0.5">
+          <div class="w-32 h-2 bg-gray-700 rounded-full overflow-hidden flex">
+            <div id="termometro-toros" class="bg-[#26a69a] h-full transition-all duration-300" style="width: 50%;"></div>
+            <div id="termometro-osos" class="bg-[#ef5350] h-full transition-all duration-300" style="width: 50%;"></div>
+          </div>
+          <span id="termometro-texto" class="font-mono text-gray-300">50.0% / 50.0%</span>
+        </div>
+      </div>
+      <div class="border-l border-gray-700 pl-3 flex flex-col justify-center">
+        <span class="text-gray-400 font-bold uppercase tracking-wider text-[9px]">🎯 Posible Escenario</span>
+        <span id="escenario-operativo" class="font-bold text-yellow-400 mt-0.5 uppercase tracking-wide">Analizando Flujo...</span>
+      </div>
+    </div>
+
+    <div class="flex items-center space-x-3">
+      <button onclick="exportarPNG()" class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded text-xs font-bold flex items-center space-x-1.5 transition shadow">
+        <span>Exportar a PNG</span>
+      </button>
+
+      <div class="relative">
+        <button id="btn-notificaciones" onclick="toggleNotificaciones()" class="relative p-2 rounded hover:bg-gray-800 transition">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+          </svg>
+          <span id="badge-notificaciones" class="hidden absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[10px] font-bold rounded-full h-4 w-4 flex items-center justify-center">0</span>
+        </button>
+        <div id="panel-notificaciones" class="hidden absolute right-0 mt-2 w-80 max-h-96 overflow-y-auto bg-[#1e222d] border border-gray-700 rounded shadow-lg z-50">
+          <div class="p-2 border-b border-gray-800 text-xs font-bold uppercase tracking-wider text-gray-400 sticky top-0 bg-[#1e222d]">
+            Barridos de Liquidez (SFP)
+          </div>
+          <div id="lista-notificaciones" class="divide-y divide-gray-800">
+            <div class="px-3 py-4 text-xs text-gray-500 text-center">Esperando alertas...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="flex-1 w-full h-full relative" id="contenedor-grafico">
+    <div id="tv-chart" class="absolute inset-0 z-10"></div>
+    <canvas id="canvas-libro" class="absolute inset-0 w-full h-full z-20 pointer-events-none"></canvas>
+  </div>
+
+  <script>
+    let chart, candleSeries, lineSeries;
+    let wsTicker = null;
+    let wsDepth = null;
+    let wsOraculoBybit = null;
+    let currentSymbol = "BTCUSDT";
+    let currentInterval = "1m";
+    let currentPriceGlobal = null;
+    let lastCandleTime = 0;
+    let currentCandle = null;
+
+    let localBook = { bids: new Map(), asks: new Map() };
+    let bookState = 'idle';
+    let depthBuffer = [];
+    let lastUpdateId = 0;
+    let ultimoUProcesado = null;
+
+    let tickSizesPorSimbolo = {};
+    let todosLosSimbolos = [];
+    let libroEpoch = 0;
+    let precisionPrecioActual = 8;
+    let numZonasDestacadas = 2;
+
+    let volumenAlcistaOraculo = 0;
+    let volumenBajistaOraculo = 0;
+    let ultimoOiOraculo = null;
+    let ultimoPrecioOraculo = null;
+    let accPrecioDeltaOraculo = 0;
+    let accOiDeltaOraculo = 0;
+
+    async function cargarExchangeInfo() {
+      try {
+        const res = await fetch('https://fapi.binance.com/fapi/v1/exchangeInfo');
+        const info = await res.json();
+        info.symbols.forEach(s => {
+          const filtroPrecio = s.filters.find(f => f.filterType === 'PRICE_FILTER');
+          if (filtroPrecio) tickSizesPorSimbolo[s.symbol] = filtroPrecio.tickSize;
+          if (s.status === 'TRADING' && s.contractType === 'PERPETUAL' && s.quoteAsset === 'USDT')
+            todosLosSimbolos.push(s.symbol);
+        });
+        todosLosSimbolos.sort();
+      } catch (err) { console.error('[Info] Error cargando exchangeInfo:', err); }
+    }
+
+    function contarDecimales(tickSizeStr) {
+      if (!tickSizeStr || !tickSizeStr.includes('.')) return 0;
+      const parte = tickSizeStr.split('.')[1] || '';
+      return parte.replace(/0+$/, '').length || parte.length;
+    }
+
+    function inicializarGrafico() {
+      const container = document.getElementById('tv-chart');
+      chart = LightweightCharts.createChart(container, {
+        autoSize: true, layout: { background: { color: '#131722' }, textColor: '#d1d4dc' },
+        grid: { vertLines: { color: 'rgba(42, 46, 57, 0.15)' }, horzLines: { color: 'rgba(42, 46, 57, 0.15)' } },
+        crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+        rightPriceScale: { borderColor: 'rgba(197, 203, 206, 0.2)', autoScale: true },
+        timeScale: { borderColor: 'rgba(197, 203, 206, 0.2)', timeVisible: true }
+      });
+      candleSeries = chart.addCandlestickSeries({ upColor: '#26a69a', downColor: '#ef5350', borderVisible: false, wickUpColor: '#26a69a', wickDownColor: '#ef5350' });
+      lineSeries = chart.addLineSeries({ color: 'rgba(255, 255, 255, 0.4)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dotted, priceLineVisible: false, lastValueVisible: false });
+    }
+
+    async function inicializarParesTopVolume() {
+      const selector = document.getElementById('selector-moneda');
+      try {
+        const response = await fetch('/api/top20');
+        const topPares = await response.json();
+        if (topPares.length) {
+          selector.innerHTML = '';
+          topPares.forEach(par => {
+            const opt = document.createElement('option');
+            opt.value = par; opt.textContent = par.replace('USDT', '/USDT');
+            if (par === "BTCUSDT") opt.selected = true;
+            selector.appendChild(opt);
+          });
+          currentSymbol = selector.value;
+        }
+      } catch (error) {
+        selector.innerHTML = `<option value="BTCUSDT">BTC/USDT</option>`;
+        currentSymbol = "BTCUSDT";
+      }
+    }
+
+    async function cargarHistorial(symbol, interval, miEpoch) {
+      try {
+        const res = await fetch(`/api/historia/${symbol}?interval=${interval}`);
+        const dataRaw = await res.json();
+        if (miEpoch !== libroEpoch || !Array.isArray(dataRaw)) return null;
+        let candles = dataRaw.map(d => ({ time: Math.floor((Number(d[0]) > 5e9 ? Number(d[0]) / 1000 : Number(d[0]))), open: parseFloat(d[1]), high: parseFloat(d[2]), low: parseFloat(d[3]), close: parseFloat(d[4]) }));
+        candles = candles.filter(c => c.high > 0.01 && c.high < 1e6 && c.low > 0.01 && c.low < 1e6);
+        return candles.sort((a, b) => a.time - b.time);
+      } catch (err) { return null; }
+    }
+
+    function obtenerSegundosTemporalidad(intervalo) {
+      const valor = parseInt(intervalo);
+      if (intervalo.includes('m')) return valor * 60;
+      if (intervalo.includes('h')) return valor * 3600;
+      if (intervalo.includes('d')) return valor * 86400;
+      if (intervalo.includes('w')) return valor * 604800;
+      if (intervalo.includes('M')) return valor * 2592000;
+      return 60;
+    }
+
+    function conectarOraculoBybit(symbol, miEpoch) {
+      const url = "wss://stream.bybit.com/v5/public/linear";
+      volumenAlcistaOraculo = 0; volumenBajistaOraculo = 0; ultimoOiOraculo = null; ultimoPrecioOraculo = null; accPrecioDeltaOraculo = 0; accOiDeltaOraculo = 0;
+      const ws = new WebSocket(url);
+      ws.onopen = () => { if (miEpoch === libroEpoch) ws.send(JSON.stringify({ op: "subscribe", args: [`tickers.${symbol}`] })); };
+      ws.onmessage = (event) => {
+        if (miEpoch !== libroEpoch) return;
+        try {
+          const data = JSON.parse(event.data);
+          if (data && data.topic && data.topic.includes("tickers") && data.data) {
+            const marketData = data.data;
+            const newPriceStr = marketData.lastPrice;
+            const newOiStr = marketData.openInterestValue || marketData.openInterest;
+            if (newPriceStr) {
+              const currentPrice = parseFloat(newPriceStr);
+              if (ultimoPrecioOraculo !== null && currentPrice !== ultimoPrecioOraculo) accPrecioDeltaOraculo += (currentPrice - ultimoPrecioOraculo);
+              ultimoPrecioOraculo = currentPrice;
+            }
+            if (newOiStr) {
+              const currentOi = parseFloat(newOiStr);
+              if (ultimoOiOraculo !== null) accOiDeltaOraculo += currentOi - ultimoOiOraculo;
+              ultimoOiOraculo = currentOi;
+            }
+            if (Math.abs(accOiDeltaOraculo) >= 100) {
+              const precioSube = accPrecioDeltaOraculo > 0, precioBaja = accPrecioDeltaOraculo < 0, oiBaja = accOiDeltaOraculo < 0;
+              const contratos = Math.abs(accOiDeltaOraculo);
+              if (precioSube) volumenAlcistaOraculo += contratos; else if (precioBaja) volumenBajistaOraculo += contratos;
+              accPrecioDeltaOraculo = 0; accOiDeltaOraculo = 0;
+              actualizarTermometroUI(precioSube, precioBaja, oiBaja);
+            }
+          }
+        } catch (err) {}
+      };
+      ws.onclose = () => { if (miEpoch === libroEpoch) setTimeout(() => { if (miEpoch === libroEpoch) wsOraculoBybit = conectarOraculoBybit(symbol, miEpoch); }, 3000); };
+      return ws;
+    }
+
+    function actualizarTermometroUI(precioSubeLast = false, precioBajaLast = false, oiBajaLast = false) {
+      const total = volumenAlcistaOraculo + volumenBajistaOraculo;
+      const pctBulls = total > 0 ? (volumenAlcistaOraculo / total) * 100 : 50.0;
+      const pctBears = total > 0 ? (volumenBajistaOraculo / total) * 100 : 50.0;
+      const barraToros = document.getElementById('termometro-toros'), barraOsos = document.getElementById('termometro-osos'), textoTerm = document.getElementById('termometro-texto'), etiquetaEscenario = document.getElementById('escenario-operativo');
+      
+      if (barraToros) { barraToros.style.width = `${pctBulls}%`; barraOsos.style.width = `${pctBears}%`; textoTerm.textContent = `${pctBulls.toFixed(1)}% / ${pctBears.toFixed(1)}%`; }
+      if (etiquetaEscenario) {
+        if (pctBulls >= 65.0) { etiquetaEscenario.textContent = "🟢 Posible Long (Soporte / Absorción)"; etiquetaEscenario.className = "font-bold text-emerald-400 mt-0.5 uppercase tracking-wide"; }
+        else if (pctBears >= 65.0) { etiquetaEscenario.textContent = "🔴 Posible Short (Resistencia / Rechazo)"; etiquetaEscenario.className = "font-bold text-red-400 mt-0.5 uppercase tracking-wide"; }
+        else {
+          if (oiBajaLast && precioSubeLast) { etiquetaEscenario.textContent = "⚠️ Short Squeeze (Falso Alza / Trampa)"; etiquetaEscenario.className = "font-bold text-yellow-400 mt-0.5 uppercase tracking-wide"; }
+          else if (oiBajaLast && precioBajaLast) { etiquetaEscenario.textContent = "⚠️ Long Squeeze (Pánico / Barrido)"; etiquetaEscenario.className = "font-bold text-purple-400 mt-0.5 uppercase tracking-wide"; }
+          else if (pctBulls > pctBears) { etiquetaEscenario.textContent = "⚠️ Consolidación (Sesgo Alcista)"; etiquetaEscenario.className = "font-bold text-emerald-300 mt-0.5 uppercase tracking-wide"; }
+          else if (pctBears > pctBulls) { etiquetaEscenario.textContent = "⚠️ Consolidación (Sesgo Bajista)"; etiquetaEscenario.className = "font-bold text-red-300 mt-0.5 uppercase tracking-wide"; }
+          else { etiquetaEscenario.textContent = "⚠️ Consolidación / Neutro"; etiquetaEscenario.className = "font-bold text-yellow-400 mt-0.5 uppercase tracking-wide"; }
+        }
+      }
+    }
+
+    function conectarTicker(symbol, intervalo, miEpoch) {
+      const url = `wss://fstream.binance.com/ws/${symbol.toLowerCase()}@bookTicker`;
+      const ws = new WebSocket(url);
+      ws.onmessage = (event) => {
+          if (miEpoch !== libroEpoch) return;
+          try {
+              const raw = JSON.parse(event.data);
+              if (raw.b && raw.a) {
+                  const bid = parseFloat(raw.b), ask = parseFloat(raw.a), price = (bid + ask) / 2;
+                  const precioAnterior = currentPriceGlobal || price;
+                  currentPriceGlobal = price;
+                  actualizarInterfazPrecio(price, precioAnterior);
+                  actualizarVelaActual(price);
+              }
+          } catch (err) {}
+      };
+      ws.onclose = () => { if (miEpoch === libroEpoch) setTimeout(() => { if (miEpoch === libroEpoch) wsTicker = conectarTicker(symbol, intervalo, miEpoch); }, 2000); };
+      return ws;
+    }
+
+    let timeoutColorPrecio = null;
+    function actualizarInterfazPrecio(price, precioAnterior) {
+      const el = document.getElementById('precio-tiempo-real');
+      if (!el) return;
+      el.textContent = price.toFixed(precisionPrecioActual);
+      el.classList.remove('precio-up', 'precio-down');
+      if (price > precioAnterior) el.classList.add('precio-up');
+      else if (price < precioAnterior) el.classList.add('precio-down');
+      if (timeoutColorPrecio) clearTimeout(timeoutColorPrecio);
+      timeoutColorPrecio = setTimeout(() => { el.classList.remove('precio-up', 'precio-down'); }, 400);
+    }
+
+    function iniciarNuevaVela(time, price) {
+      currentCandle = { time: time, open: price, high: price, low: price, close: price };
+      candleSeries.update(currentCandle); lineSeries.update({ time: time, value: price });
+      lastCandleTime = time;
+    }
+
+    function actualizarVelaActual(price) {
+      if (!currentCandle) return;
+      const segundosIntervalo = obtenerSegundosTemporalidad(currentInterval);
+      const ahora = Math.floor(Date.now() / 1000);
+      const tiempoVelaActual = Math.floor(ahora / segundosIntervalo) * segundosIntervalo;
+      if (tiempoVelaActual > currentCandle.time) { iniciarNuevaVela(tiempoVelaActual, price); return; }
+      currentCandle.close = price;
+      if (price > currentCandle.high) currentCandle.high = price;
+      if (price < currentCandle.low) currentCandle.low = price;
+      candleSeries.update(currentCandle); lineSeries.update({ time: currentCandle.time, value: price });
+    }
+
+    async function cargarMercado() {
+      libroEpoch++; const miEpoch = libroEpoch;
+      limpiarLineasMuros();
+      if (ctxLibro && canvasLibro) ctxLibro.clearRect(0, 0, canvasLibro.width, canvasLibro.height);
+      localBook.bids.clear(); localBook.asks.clear(); depthBuffer = [];
+      if (wsTicker) { wsTicker.close(); wsTicker = null; }
+      if (wsDepth) { wsDepth.close(); wsDepth = null; }
+      if (wsOraculoBybit) { wsOraculoBybit.close(); wsOraculoBybit = null; }
+
+      const cleanSymbol = currentSymbol.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+      const tickSizeStr = tickSizesPorSimbolo[cleanSymbol];
+      precisionPrecioActual = tickSizeStr ? contarDecimales(tickSizeStr) : 8;
+      
+      candleSeries.applyOptions({ priceFormat: { type: 'price', precision: precisionPrecioActual, minMove: tickSizeStr ? parseFloat(tickSizeStr) : Math.pow(10, -precisionPrecioActual) } });
+
+      const candles = await cargarHistorial(cleanSymbol, currentInterval, miEpoch);
+      if (miEpoch !== libroEpoch) return;
+
+      if (candles && candles.length > 0) {
+        candleSeries.setData(candles);
+        const last = candles[candles.length - 1]; currentCandle = { ...last }; lastCandleTime = last.time;
+        lineSeries.setData(candles.map(c => ({ time: c.time, value: c.close })));
+        chart.timeScale().fitContent(); chart.priceScale('right').applyOptions({ autoScale: true });
+      } else {
+        const candleStartTime = Math.floor(Math.floor(Date.now() / 1000) / obtenerSegundosTemporalidad(currentInterval)) * obtenerSegundosTemporalidad(currentInterval);
+        candleSeries.setData([]); lineSeries.setData([]); iniciarNuevaVela(candleStartTime, 0);
+      }
+      if (miEpoch !== libroEpoch) return;
+      wsTicker = conectarTicker(cleanSymbol, currentInterval, miEpoch);
+      wsOraculoBybit = conectarOraculoBybit(cleanSymbol, miEpoch);
+      iniciarLibroCompleto(cleanSymbol, miEpoch);
+    }
+
+    async function iniciarLibroCompleto(symbolLimpio, miEpoch) {
+      localBook.bids.clear(); localBook.asks.clear(); depthBuffer = []; lastUpdateId = 0; ultimoUProcesado = null; bookState = 'buffering';
+      wsDepth = new WebSocket(`wss://fstream.binance.com/ws/${symbolLimpio.toLowerCase()}@depth@100ms`);
+      wsDepth.onmessage = (event) => {
+        if (miEpoch !== libroEpoch) return;
+        try {
+          const data = JSON.parse(event.data);
+          if (bookState === 'buffering') depthBuffer.push(data);
+          else if (bookState === 'synced') aplicarEventoAlLibro(data, symbolLimpio, miEpoch);
+        } catch (err) {}
+      };
+      wsDepth.onclose = () => { if (miEpoch === libroEpoch) setTimeout(() => { if (miEpoch === libroEpoch) iniciarLibroCompleto(symbolLimpio, miEpoch); }, 2000); };
+
+      try {
+        const res = await fetch(`https://fapi.binance.com/fapi/v1/depth?symbol=${symbolLimpio}&limit=500`);
+        const snapshot = await res.json();
+        if (miEpoch !== libroEpoch) return;
+        if (!snapshot.lastUpdateId) { bookState = 'idle'; return; }
+        
+        lastUpdateId = snapshot.lastUpdateId;
+        snapshot.bids.forEach(([price, qty]) => { const q = parseFloat(qty); if (q > 0) localBook.bids.set(price, q); });
+        snapshot.asks.forEach(([price, qty]) => { const q = parseFloat(qty); if (q > 0) localBook.asks.set(price, q); });
+
+        depthBuffer = depthBuffer.filter(ev => ev.u > lastUpdateId);
+        const indexEnganche = depthBuffer.findIndex(ev => ev.U <= lastUpdateId + 1 && ev.u >= lastUpdateId + 1);
+        
+        if (depthBuffer.length > 0 && indexEnganche === -1) { bookState = 'idle'; setTimeout(() => iniciarLibroCompleto(symbolLimpio, miEpoch), 500); return; }
+        for (let i = Math.max(indexEnganche, 0); i < depthBuffer.length; i++) aplicarEventoAlLibro(depthBuffer[i], symbolLimpio, miEpoch);
+        depthBuffer = []; bookState = 'synced'; renderizarLibroCompleto();
+      } catch (err) { bookState = 'idle'; }
+    }
+
+    function aplicarEventoAlLibro(data, symbolLimpio, miEpoch) {
+      if (miEpoch !== libroEpoch) return;
+      if (ultimoUProcesado !== null && data.pu !== ultimoUProcesado) { bookState = 'idle'; iniciarLibroCompleto(symbolLimpio, miEpoch); return; }
+      data.b.forEach(([price, qty]) => { const q = parseFloat(qty); if (q === 0) localBook.bids.delete(price); else localBook.bids.set(price, q); });
+      data.a.forEach(([price, qty]) => { const q = parseFloat(qty); if (q === 0) localBook.asks.delete(price); else localBook.asks.set(price, q); });
+      ultimoUProcesado = data.u; renderizarLibroCompleto();
+    }
+
+    function formatearCantidad(q) { if (q >= 1e6) return (q / 1e6).toFixed(2) + 'M'; if (q >= 1e3) return (q / 1e3).toFixed(1) + 'K'; return q.toFixed(1); }
+
+    function obtenerBuckets() {
+      if (!candleSeries) return null;
+      const rect = canvasLibro.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0 || !currentPriceGlobal) return null;
+      const precioArriba = candleSeries.coordinateToPrice(0), precioAbajo = candleSeries.coordinateToPrice(rect.height);
+      if (precioArriba === null || precioAbajo === null || precioArriba <= precioAbajo) return null;
+
+      const NUM_BUCKETS = 80, bucketSize = (precioArriba - precioAbajo) / NUM_BUCKETS;
+      if (!isFinite(bucketSize) || bucketSize <= 0) return null;
+
+      const buckets = new Array(NUM_BUCKETS).fill(null).map(() => ({ qty: 0, precioMin: Infinity, precioMax: -Infinity, esAsk: undefined }));
+
+      function acumular(mapa) {
+        mapa.forEach((qty, priceStr) => {
+          const price = parseFloat(priceStr);
+          if (qty <= 0 || price < precioAbajo || price > precioArriba) return;
+          let idx = Math.floor((price - precioAbajo) / bucketSize);
+          if (idx < 0) idx = 0; if (idx >= NUM_BUCKETS) idx = NUM_BUCKETS - 1;
+          const b = buckets[idx];
+          b.qty += qty;
+          if (price < b.precioMin) b.precioMin = price;
+          if (price > b.precioMax) b.precioMax = price;
+          b.esAsk = (b.precioMin >= currentPriceGlobal);
+        });
+      }
+      acumular(localBook.bids); acumular(localBook.asks);
+      return buckets.filter(b => b.qty > 0 && b.esAsk !== undefined).map(b => ({ qty: b.qty, precioCentro: (b.precioMin + b.precioMax) / 2, esAsk: b.esAsk })).sort((a, b) => b.precioCentro - a.precioCentro);
+    }
+
+    function cambiarZonas(valor) { numZonasDestacadas = valor; renderizarLibroCompleto(); }
+
+    let lineasMuros = [];
+    function limpiarLineasMuros() { for (const item of lineasMuros) candleSeries.removePriceLine(item.line); lineasMuros = []; }
+    function crearLineaMuro(price, qty, color, lineWidth, titulo) { const line = candleSeries.createPriceLine({ price: price, color: color, lineWidth: lineWidth, lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: true, title: titulo }); lineasMuros.push({ key: price + '_' + qty, line }); }
+
+    function renderizarLibroCompleto() {
+      if (localBook.asks.size === 0 || localBook.bids.size === 0) return;
+      const filas = obtenerBuckets();
+      if (!filas || filas.length === 0) return;
+
+      const asks = filas.filter(f => f.esAsk), bids = filas.filter(f => !f.esAsk);
+      let numZonas = numZonasDestacadas === 0 ? 999 : numZonasDestacadas;
+      let zonasAsk = numZonasDestacadas === 0 ? asks : asks.slice().sort((a,b)=>b.qty-a.qty).slice(0, numZonas);
+      let zonasBid = numZonasDestacadas === 0 ? bids : bids.slice().sort((a,b)=>b.qty-a.qty).slice(0, numZonas);
+
+      limpiarLineasMuros();
+      for (const item of zonasAsk) crearLineaMuro(item.precioCentro, item.qty, '#ff1744', 1, formatearCantidad(item.qty));
+      for (const item of zonasBid) crearLineaMuro(item.precioCentro, item.qty, '#00e676', 1, formatearCantidad(item.qty));
+      dibujarHeatmapLibro(asks, bids, zonasAsk, zonasBid, numZonasDestacadas === 0);
+    }
+
+    let canvasLibro, ctxLibro, ultimoDibujoLibro = 0;
+    function inicializarCanvasLibro() { canvasLibro = document.getElementById('canvas-libro'); ctxLibro = canvasLibro.getContext('2d'); ajustarTamanoCanvasLibro(); window.addEventListener('resize', ajustarTamanoCanvasLibro); }
+    function ajustarTamanoCanvasLibro() { if (!canvasLibro) return; const rect = canvasLibro.getBoundingClientRect(), dpr = window.devicePixelRatio || 1; canvasLibro.width = Math.max(rect.width * dpr, 1); canvasLibro.height = Math.max(rect.height * dpr, 1); ctxLibro.setTransform(dpr, 0, 0, dpr, 0, 0); }
+    function dibujarBarraRedondeada(ctx, x, y, w, h, r) {
+      const radio = Math.min(r, h / 2, Math.abs(w) / 2 || 0); ctx.beginPath();
+      if (w >= 0) { ctx.moveTo(x, y); ctx.lineTo(x + w - radio, y); ctx.arcTo(x + w, y, x + w, y + radio, radio); ctx.lineTo(x + w, y + h - radio); ctx.arcTo(x + w, y + h, x + w - radio, y + h, radio); ctx.lineTo(x, y + h); }
+      else { ctx.moveTo(x, y); ctx.lineTo(x + w + radio, y); ctx.arcTo(x + w, y, x + w, y + radio, radio); ctx.lineTo(x + w, y + h - radio); ctx.arcTo(x + w, y + h, x + w + radio, y + h, radio); ctx.lineTo(x, y + h); }
+      ctx.closePath(); ctx.fill();
+    }
+    function dibujarMarcaDeAgua() {
+      if (!ctxLibro) return;
+      const rect = canvasLibro.getBoundingClientRect(); const parFormateado = currentSymbol.replace('USDT', '/USDT');
+      ctxLibro.save(); ctxLibro.font = '700 48px system-ui, -apple-system, sans-serif'; ctxLibro.fillStyle = 'rgba(255, 255, 255, 0.03)'; ctxLibro.textAlign = 'center'; ctxLibro.textBaseline = 'middle';
+      ctxLibro.fillText(parFormateado + ' · @GenaroCoin', (rect.width - 65) / 2, rect.height / 2); ctxLibro.restore();
+    }
+
+    function dibujarHeatmapLibro(todasAsks, todasBids, zonasAsk, zonasBid, mostrarTodas) {
+      if (!ctxLibro || !candleSeries || !currentPriceGlobal) return;
+      const rect = canvasLibro.getBoundingClientRect(); if (rect.width === 0 || rect.height === 0) return;
+      ctxLibro.clearRect(0, 0, rect.width, rect.height); dibujarMarcaDeAgua();
+
+      const setNumerosAsk = new Set(zonasAsk.map(f => f.precioCentro)), setNumerosBid = new Set(zonasBid.map(f => f.precioCentro));
+      const todas = [...todasAsks, ...todasBids], maxVolGlobal = Math.max(...todas.map(f => f.qty), 1), logMaxGlobal = Math.log(maxVolGlobal + 1);
+      const bordeDerecho = rect.width - 65, anchoMaximoBarras = bordeDerecho * 0.35, grosorBase = Math.max(2, Math.min(6, (rect.height / Math.max(todas.length, 1)) * 0.8));
+
+      ctxLibro.textBaseline = 'middle';
+      for (const item of todas) {
+        const y = candleSeries.priceToCoordinate(item.precioCentro);
+        if (y === null || y < -5 || y > rect.height + 5) continue;
+        const tieneNumero = item.esAsk ? setNumerosAsk.has(item.precioCentro) : setNumerosBid.has(item.precioCentro);
+        let color, grosor;
+        if (tieneNumero) { color = item.esAsk ? 'rgba(239, 68, 68, 0.4)' : 'rgba(45, 212, 191, 0.4)'; grosor = grosorBase * 1.5; } 
+        else { color = item.esAsk ? 'rgba(239, 68, 68, 0.1)' : 'rgba(45, 212, 191, 0.1)'; grosor = grosorBase; }
+
+        const proporcion = Math.min(Math.log(item.qty + 1) / logMaxGlobal, 1), largo = Math.max(proporcion * anchoMaximoBarras, 2), x = bordeDerecho - largo;
+        ctxLibro.fillStyle = color; dibujarBarraRedondeada(ctxLibro, x, y - grosor / 2, largo, grosor, 2);
+        if (tieneNumero) {
+            ctxLibro.font = '600 11px system-ui, -apple-system, "Segoe UI", sans-serif'; ctxLibro.shadowColor = '#000000'; ctxLibro.shadowBlur = 4;
+            ctxLibro.fillStyle = item.esAsk ? 'rgba(255, 180, 180, 0.9)' : 'rgba(180, 255, 220, 0.9)'; ctxLibro.textAlign = 'right'; ctxLibro.fillText(formatearCantidad(item.qty), x - 5, y + 0.5); ctxLibro.shadowBlur = 0; 
+        }
+      }
+    }
+
+    function loopDibujoLibro(timestamp) { if (timestamp - ultimoDibujoLibro > 50) { if (bookState === 'synced') renderizarLibroCompleto(); ultimoDibujoLibro = timestamp; } requestAnimationFrame(loopDibujoLibro); }
+
+    function exportarPNG() {
+      const contenedorGrafico = document.getElementById('contenedor-grafico');
+      try {
+        const tvCanvas = contenedorGrafico.querySelector('#tv-chart canvas'), overlayCanvas = document.getElementById('canvas-libro');
+        const masterCanvas = document.createElement('canvas');
+        masterCanvas.width = contenedorGrafico.clientWidth * window.devicePixelRatio; masterCanvas.height = contenedorGrafico.clientHeight * window.devicePixelRatio;
+        const mCtx = masterCanvas.getContext('2d'); mCtx.scale(window.devicePixelRatio, window.devicePixelRatio);
+        mCtx.fillStyle = '#131722'; mCtx.fillRect(0, 0, contenedorGrafico.clientWidth, contenedorGrafico.clientHeight);
+        mCtx.drawImage(tvCanvas, 0, 0, contenedorGrafico.clientWidth, contenedorGrafico.clientHeight);
+        if (overlayCanvas) mCtx.drawImage(overlayCanvas, 0, 0, contenedorGrafico.clientWidth, contenedorGrafico.clientHeight);
+        masterCanvas.toBlob((blob) => {
+          const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${currentSymbol}_GenaroCoin.png`; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(a.href);
+        }, 'image/png');
+      } catch (err) { alert('Ocurrió un error al exportar.'); }
+    }
+
+    function cambiarPar(nuevoPar) { currentSymbol = nuevoPar; cargarMercado(); }
+    function cambiarTemporalidad(nuevaTemporalidad) { currentInterval = nuevaTemporalidad; cargarMercado(); }
+    function filtrarSimbolos(texto) {
+      const contenedor = document.getElementById('resultados-busqueda'), query = texto.trim().toUpperCase();
+      if (!query) { contenedor.classList.add('hidden'); contenedor.innerHTML = ''; return; }
+      const coincidencias = todosLosSimbolos.filter(s => s.includes(query)).slice(0, 8);
+      if (coincidencias.length === 0) { contenedor.innerHTML = `<div class="px-3 py-2 text-xs text-gray-500">Sin resultados</div>`; contenedor.classList.remove('hidden'); return; }
+      contenedor.innerHTML = coincidencias.map(s => `<div class="px-3 py-2 text-xs font-mono text-gray-200 hover:bg-blue-900/40 cursor-pointer" onclick="seleccionarSimboloBuscado('${s}')">${s.replace('USDT', '/USDT')}</div>`).join('');
+      contenedor.classList.remove('hidden');
+    }
+    function seleccionarSimboloBuscado(symbol) {
+      document.getElementById('buscador-par').value = ''; document.getElementById('resultados-busqueda').classList.add('hidden');
+      const selector = document.getElementById('selector-moneda'); let opcion = Array.from(selector.options).find(o => o.value === symbol);
+      if (!opcion) { opcion = document.createElement('option'); opcion.value = symbol; opcion.textContent = symbol.replace('USDT', '/USDT'); selector.appendChild(opcion); }
+      selector.value = symbol; cambiarPar(symbol);
+    }
+    document.addEventListener('click', (e) => { const contenedor = document.getElementById('resultados-busqueda'), input = document.getElementById('buscador-par'); if (contenedor && !contenedor.classList.contains('hidden') && !contenedor.contains(e.target) && e.target !== input) contenedor.classList.add('hidden'); });
+
+    let alertasNotificaciones = [], contadorNoLeidas = 0;
+    function iniciarStreamAlertas() {
+      const es = new EventSource('/stream-alertas');
+      es.onmessage = (event) => {
+        try {
+          alertasNotificaciones.unshift(JSON.parse(event.data));
+          if (alertasNotificaciones.length > 50) alertasNotificaciones.pop();
+          contadorNoLeidas++; actualizarBadgeNotificaciones(); renderizarNotificaciones();
+        } catch (err) { }
+      };
+    }
+    function actualizarBadgeNotificaciones() {
+      const badge = document.getElementById('badge-notificaciones');
+      if (contadorNoLeidas > 0) { badge.textContent = contadorNoLeidas > 9 ? '9+' : contadorNoLeidas; badge.classList.remove('hidden'); } else badge.classList.add('hidden');
+    }
+    function renderizarNotificaciones() {
+      const lista = document.getElementById('lista-notificaciones');
+      if (alertasNotificaciones.length === 0) { lista.innerHTML = `<div class="px-3 py-4 text-xs text-gray-500 text-center">Esperando alertas...</div>`; return; }
+      lista.innerHTML = alertasNotificaciones.map(a => `<div class="px-3 py-2 hover:bg-gray-800/50 cursor-pointer text-xs" onclick="cambiarParDesdeAlerta('${a.activo}')"><div class="flex justify-between items-center"><span class="font-bold ${a.color}">${a.tipo === 'LONG' ? '▲ LONG' : '▼ SHORT'} · ${a.activo.replace('USDT', '/USDT')}</span></div><div class="text-gray-400 mt-0.5">Precio: <span class="text-gray-200">${a.precio}</span> · Nivel: <span class="text-gray-200">${a.nivel_clave}</span></div></div>`).join('');
+    }
+    function cambiarParDesdeAlerta(symbol) { seleccionarSimboloBuscado(symbol); document.getElementById('panel-notificaciones').classList.add('hidden'); }
+    function toggleNotificaciones() { const panel = document.getElementById('panel-notificaciones'); panel.classList.toggle('hidden'); if (!panel.classList.contains('hidden')) { contadorNoLeidas = 0; actualizarBadgeNotificaciones(); } }
+    document.addEventListener('click', (e) => { const panel = document.getElementById('panel-notificaciones'), btn = document.getElementById('btn-notificaciones'); if (panel && !panel.classList.contains('hidden') && !panel.contains(e.target) && !btn.contains(e.target)) panel.classList.add('hidden'); });
+
+    window.onload = async () => { inicializarGrafico(); inicializarCanvasLibro(); requestAnimationFrame(loopDibujoLibro); await Promise.all([inicializarParesTopVolume(), cargarExchangeInfo()]); cargarMercado(); iniciarStreamAlertas(); };
+  </script>
+</body>
+</html>

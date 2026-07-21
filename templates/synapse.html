@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Synapse Trail Pro Scanner</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: #0b0e17; color: #e0e4f0; padding: 20px; min-height: 100vh; }
+        .container { max-width: 1600px; margin: 0 auto; }
+        header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 20px; border-bottom: 1px solid #2a2f3f; margin-bottom: 25px; }
+        h1 { font-size: 28px; font-weight: 600; background: linear-gradient(135deg, #f9e2af, #89b4fa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; display: inline-block; }
+        .subtitle { color: #6c7086; font-size: 14px; margin-top: 4px; }
+        .status { background: #1e2233; padding: 8px 18px; border-radius: 20px; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+        .status .dot { width: 10px; height: 10px; border-radius: 50%; background: #f9e2af; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { opacity: 0.3; transform: scale(0.8); } 50% { opacity: 1; transform: scale(1.2); } 100% { opacity: 0.3; transform: scale(0.8); } }
+        .columns { display: grid; grid-template-columns: 1fr 1fr; gap: 25px; }
+        .column { background: #131722; border-radius: 16px; padding: 18px 16px; border: 1px solid #2a2f3f; min-height: 300px; }
+        .column h2 { font-size: 20px; font-weight: 500; margin-bottom: 16px; display: flex; align-items: center; gap: 10px; }
+        .column h2 .count { background: #2a2f3f; padding: 2px 12px; border-radius: 30px; font-size: 14px; font-weight: 400; }
+        .column.long-col h2 { color: #a6e3a1; }
+        .column.short-col h2 { color: #f38ba8; }
+        .alert { background: #1e2233; border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; border-left: 4px solid #6c7086; animation: slideIn 0.3s ease-out; transition: all 0.2s; }
+        .alert.long { border-left-color: #a6e3a1; }
+        .alert.short { border-left-color: #f38ba8; }
+        @keyframes slideIn { from { opacity: 0; transform: translateY(-15px); } to { opacity: 1; transform: translateY(0); } }
+        .alert-header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 15px; margin-bottom: 8px; }
+        .symbol { font-weight: 600; font-size: 18px; }
+        .symbol a { color: #cdd6f4; text-decoration: none; transition: color 0.2s; }
+        .symbol a:hover { color: #89b4fa; text-decoration: underline; }
+        .direction { font-weight: 600; font-size: 15px; }
+        .direction.long { color: #a6e3a1; }
+        .direction.short { color: #f38ba8; }
+        .grade { background: #2a2f3f; padding: 2px 12px; border-radius: 20px; font-size: 13px; font-weight: 500; }
+        .alert-details { font-size: 14px; line-height: 1.6; color: #b8c0d8; }
+        .label { color: #6c7086; font-weight: 400; }
+        .timestamp { font-size: 12px; color: #6c7086; margin-top: 4px; border-top: 1px solid #2a2f3f; padding-top: 4px; }
+        .no-alerts { color: #6c7086; text-align: center; padding: 40px 0; font-style: italic; }
+        .footer { margin-top: 30px; text-align: center; color: #6c7086; font-size: 13px; border-top: 1px solid #2a2f3f; padding-top: 20px; }
+        @media (max-width: 900px) { .columns { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+<div class="container">
+    <header>
+        <div>
+            <a href="/" class="mb-2 inline-block bg-gray-800 hover:bg-gray-700 px-3 py-1 rounded text-sm text-gray-300">← Volver al Menú</a>
+            <h1>🔍 Synapse Trail Pro Scanner</h1>
+            <div class="subtitle">Desarrollado por GenaroCoin · Escaneo continuo de señales de Trading</div>
+        </div>
+        <div class="status">
+            <span class="dot"></span>
+            <span class="status-text" id="statusText">Conectando...</span>
+        </div>
+    </header>
+
+    <div class="columns">
+        <div class="column long-col">
+            <h2>🟢 LONG <span class="count" id="longCount">0</span></h2>
+            <div id="longContainer"><div class="no-alerts">Esperando señales LONG...</div></div>
+        </div>
+        <div class="column short-col">
+            <h2>🔴 SHORT <span class="count" id="shortCount">0</span></h2>
+            <div id="shortContainer"><div class="no-alerts">Esperando señales SHORT...</div></div>
+        </div>
+    </div>
+    <div class="footer">Synapse Trail Pro · Desarrollado por GenaroCoin</div>
+</div>
+
+<script>
+    const eventSource = new EventSource('/synapse-stream');
+    const longContainer = document.getElementById('longContainer');
+    const shortContainer = document.getElementById('shortContainer');
+    const longCount = document.getElementById('longCount');
+    const shortCount = document.getElementById('shortCount');
+    const statusText = document.getElementById('statusText');
+    let longAlerts = 0, shortAlerts = 0;
+
+    function addAlert(html, isLong) {
+        const container = isLong ? longContainer : shortContainer;
+        const noAlert = container.querySelector('.no-alerts');
+        if (noAlert) noAlert.remove();
+        const temp = document.createElement('div');
+        temp.innerHTML = html;
+        if (temp.firstElementChild) {
+            container.prepend(temp.firstElementChild);
+            if (isLong) { longCount.textContent = ++longAlerts; } else { shortCount.textContent = ++shortAlerts; }
+        }
+    }
+
+    eventSource.addEventListener('alert', function(e) {
+        const html = e.data;
+        if (!html || html.trim() === '') return;
+        addAlert(html, html.includes('class="alert long"'));
+        statusText.textContent = '📩 Alerta recibida';
+    });
+
+    eventSource.addEventListener('progress', function(e) { statusText.textContent = e.data; });
+    eventSource.onerror = function() { statusText.textContent = '⚠️ Error de conexión. Reintentando...'; };
+    eventSource.onopen = function() { statusText.textContent = 'Escaneando activamente...'; };
+</script>
+</body>
+</html>
