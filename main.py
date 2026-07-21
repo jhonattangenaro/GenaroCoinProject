@@ -641,6 +641,37 @@ def synapse_view():
 def api_top20():
     return jsonify(monedas_top_global)
 
+# Cache simple en memoria para exchangeInfo (cambia muy poco, evita pedirlo en cada carga)
+_exchange_info_cache = {"data": None, "timestamp": 0}
+EXCHANGE_INFO_TTL_SEGUNDOS = 3600
+
+@app.route('/api/exchangeinfo')
+def api_exchangeinfo():
+    """Proxy del exchangeInfo de Binance Futures. Antes el navegador del visitante
+    llamaba directo a fapi.binance.com, lo cual falla (451) si el visitante está
+    en una región restringida por Binance. Ahora pasa siempre por nuestro servidor."""
+    ahora = time.time()
+    if _exchange_info_cache["data"] is not None and (ahora - _exchange_info_cache["timestamp"]) < EXCHANGE_INFO_TTL_SEGUNDOS:
+        return jsonify(_exchange_info_cache["data"])
+    try:
+        info = cliente_rest.exchange_info()
+        _exchange_info_cache["data"] = info
+        _exchange_info_cache["timestamp"] = ahora
+        return jsonify(info)
+    except Exception as e:
+        if _exchange_info_cache["data"] is not None:
+            return jsonify(_exchange_info_cache["data"])
+        return jsonify({"error": str(e)}), 502
+
+@app.route('/api/depth/<symbol>')
+def api_depth(symbol):
+    """Proxy del order book (depth) de Binance Futures, mismo motivo que arriba."""
+    symbol_limpio = symbol.upper().replace('/', '').replace('-', '')
+    try:
+        return jsonify(cliente_rest.depth(symbol=symbol_limpio, limit=500))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 502
+
 @app.route('/api/historia/<symbol>')
 def api_historia(symbol):
     symbol_limpio = symbol.upper().replace('/', '').replace('-', '')
