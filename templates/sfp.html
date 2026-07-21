@@ -147,7 +147,7 @@
 
     async function cargarExchangeInfo() {
       try {
-        const res = await fetch('https://fapi.binance.com/fapi/v1/exchangeInfo');
+        const res = await fetch('/api/exchangeinfo');
         const info = await res.json();
         info.symbols.forEach(s => {
           const filtroPrecio = s.filters.find(f => f.filterType === 'PRICE_FILTER');
@@ -374,7 +374,7 @@
       wsDepth.onclose = () => { if (miEpoch === libroEpoch) setTimeout(() => { if (miEpoch === libroEpoch) iniciarLibroCompleto(symbolLimpio, miEpoch); }, 2000); };
 
       try {
-        const res = await fetch(`https://fapi.binance.com/fapi/v1/depth?symbol=${symbolLimpio}&limit=500`);
+        const res = await fetch(`/api/depth/${symbolLimpio}`);
         const snapshot = await res.json();
         if (miEpoch !== libroEpoch) return;
         if (!snapshot.lastUpdateId) { bookState = 'idle'; return; }
