@@ -91,7 +91,6 @@ ultimo_log_diagnostico = {}
 def message_handler(_, message):
     global alertas_historial, contador_mensajes_ws, ultimo_log_general
     contador_mensajes_ws += 1
-    ahora_general = time.time()
     
     try:
         raw = json.loads(message)
@@ -685,11 +684,14 @@ def stream_precio(symbol, intervalo):
 def stream_synapse():
     return Response(scan_generator(), mimetype='text/event-stream', headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
 
+# ===================================================================
+# INICIALIZACIÓN GLOBAL (FUNCIONA TANTO EN LOCAL COMO EN GUNICORN/RENDER)
+# ===================================================================
+lista_activos = obtener_top_20_volumen()
+inicializar_contexto_historico(lista_activos)
+
+threading.Thread(target=iniciar_websocket_binance, args=(lista_activos,), daemon=True).start()
+threading.Thread(target=refrescar_contexto_historico_periodicamente, args=(lista_activos,), daemon=True).start()
+
 if __name__ == '__main__':
-    # Hilos iniciales para SFP
-    lista_activos = obtener_top_20_volumen()
-    inicializar_contexto_historico(lista_activos)
-    threading.Thread(target=iniciar_websocket_binance, args=(lista_activos,), daemon=True).start()
-    threading.Thread(target=refrescar_contexto_historico_periodicamente, args=(lista_activos,), daemon=True).start()
-    
     app.run(debug=False, host='0.0.0.0', port=5050, threaded=True)
