@@ -643,11 +643,11 @@ def api_top20():
 
 @app.route('/api/historia/<symbol>')
 def api_historia(symbol):
-    # CORRECCIÓN: Limpieza segura conservando prefijos numéricos de futuros (ej. 1000PEPEUSDT)
     symbol_limpio = symbol.upper().replace('/', '').replace('-', '')
     intervalo = request.args.get('interval', '15m')
     try:
-        return jsonify(cliente_rest.klines(symbol=symbol_limpio, interval=intervalo, limit=500))
+        # Límite ampliado a 1500 velas para mostrar todo el histórico (igual que TradingView)
+        return jsonify(cliente_rest.klines(symbol=symbol_limpio, interval=intervalo, limit=1500))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -664,7 +664,6 @@ def stream_alertas():
 
 @app.route('/stream-precio/<symbol>/<intervalo>')
 def stream_precio(symbol, intervalo):
-    # CORRECCIÓN: Limpieza conservando prefijos numéricos (ej. 1000PEPE)
     symbol_limpio = symbol.upper().replace('/', '').replace('-', '')
     pool, key = obtener_o_crear_pool(symbol_limpio, intervalo)
     mi_cola = queue.Queue()
