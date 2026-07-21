@@ -4,3 +4,4 @@ websocket-client==1.8.0
 ccxt==4.2.20
 numpy==1.26.4
 pandas==2.2.1
+gunicorn==21.2.0
