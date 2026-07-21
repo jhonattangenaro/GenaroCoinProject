@@ -50,7 +50,7 @@ def obtener_top_20_volumen():
         return monedas_top_global
     except Exception as e:
         print(f"[ERROR] No se pudo obtener el top de volumen: {e}")
-        monedas_top_global = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT", "AVAXUSDT", "LINKUSDT", "DOTUSDT", "MATICUSDT"]
+        monedas_top_global = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "1000PEPEUSDT", "DOGEUSDT", "ADAUSDT", "AVAXUSDT", "LINKUSDT"]
         return monedas_top_global
 
 def inicializar_contexto_historico(lista_simbolos):
@@ -85,11 +85,9 @@ def refrescar_contexto_historico_periodicamente(lista_simbolos, intervalo_segund
                 pass
 
 contador_mensajes_ws = 0
-ultimo_log_general = 0
-ultimo_log_diagnostico = {}
 
 def message_handler(_, message):
-    global alertas_historial, contador_mensajes_ws, ultimo_log_general
+    global alertas_historial, contador_mensajes_ws
     contador_mensajes_ws += 1
     
     try:
@@ -645,9 +643,11 @@ def api_top20():
 
 @app.route('/api/historia/<symbol>')
 def api_historia(symbol):
+    # CORRECCIÓN: Limpieza segura conservando prefijos numéricos de futuros (ej. 1000PEPEUSDT)
+    symbol_limpio = symbol.upper().replace('/', '').replace('-', '')
     intervalo = request.args.get('interval', '15m')
     try:
-        return jsonify(cliente_rest.klines(symbol=symbol.upper(), interval=intervalo, limit=500))
+        return jsonify(cliente_rest.klines(symbol=symbol_limpio, interval=intervalo, limit=500))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -664,7 +664,9 @@ def stream_alertas():
 
 @app.route('/stream-precio/<symbol>/<intervalo>')
 def stream_precio(symbol, intervalo):
-    pool, key = obtener_o_crear_pool(symbol.upper(), intervalo)
+    # CORRECCIÓN: Limpieza conservando prefijos numéricos (ej. 1000PEPE)
+    symbol_limpio = symbol.upper().replace('/', '').replace('-', '')
+    pool, key = obtener_o_crear_pool(symbol_limpio, intervalo)
     mi_cola = queue.Queue()
     with pools_lock:
         pool["subs"].add(mi_cola)
@@ -685,7 +687,7 @@ def stream_synapse():
     return Response(scan_generator(), mimetype='text/event-stream', headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
 
 # ===================================================================
-# INICIALIZACIÓN GLOBAL (FUNCIONA TANTO EN LOCAL COMO EN GUNICORN/RENDER)
+# INICIALIZACIÓN GLOBAL
 # ===================================================================
 lista_activos = obtener_top_20_volumen()
 inicializar_contexto_historico(lista_activos)
