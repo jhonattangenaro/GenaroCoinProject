@@ -205,7 +205,7 @@
         const dataRaw = await res.json();
         if (miEpoch !== libroEpoch || !Array.isArray(dataRaw)) return null;
         let candles = dataRaw.map(d => ({ time: Math.floor((Number(d[0]) > 5e9 ? Number(d[0]) / 1000 : Number(d[0]))), open: parseFloat(d[1]), high: parseFloat(d[2]), low: parseFloat(d[3]), close: parseFloat(d[4]) }));
-        candles = candles.filter(c => c.high > 0.01 && c.high < 1e6 && c.low > 0.01 && c.low < 1e6);
+        candles = candles.filter(c => Number.isFinite(c.high) && Number.isFinite(c.low) && Number.isFinite(c.open) && Number.isFinite(c.close) && c.high > 0 && c.low > 0 && c.high >= c.low);
         return candles.sort((a, b) => a.time - b.time);
       } catch (err) { return null; }
     }
@@ -316,11 +316,10 @@
     }
 
     function actualizarVelaActual(price) {
-      if (!currentCandle) return;
       const segundosIntervalo = obtenerSegundosTemporalidad(currentInterval);
       const ahora = Math.floor(Date.now() / 1000);
       const tiempoVelaActual = Math.floor(ahora / segundosIntervalo) * segundosIntervalo;
-      if (tiempoVelaActual > currentCandle.time) { iniciarNuevaVela(tiempoVelaActual, price); return; }
+      if (!currentCandle || tiempoVelaActual > currentCandle.time) { iniciarNuevaVela(tiempoVelaActual, price); return; }
       currentCandle.close = price;
       if (price > currentCandle.high) currentCandle.high = price;
       if (price < currentCandle.low) currentCandle.low = price;
@@ -351,8 +350,7 @@
         lineSeries.setData(candles.map(c => ({ time: c.time, value: c.close })));
         chart.timeScale().fitContent(); chart.priceScale('right').applyOptions({ autoScale: true });
       } else {
-        const candleStartTime = Math.floor(Math.floor(Date.now() / 1000) / obtenerSegundosTemporalidad(currentInterval)) * obtenerSegundosTemporalidad(currentInterval);
-        candleSeries.setData([]); lineSeries.setData([]); iniciarNuevaVela(candleStartTime, 0);
+        candleSeries.setData([]); lineSeries.setData([]); currentCandle = null;
       }
       if (miEpoch !== libroEpoch) return;
       wsTicker = conectarTicker(cleanSymbol, currentInterval, miEpoch);
